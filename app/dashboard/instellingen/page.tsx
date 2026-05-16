@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { Users, ShieldCheck, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function InstellingenPage() {
@@ -9,6 +11,35 @@ export default async function InstellingenPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Instellingen</h1>
         <p className="text-sm text-gray-500 mt-0.5">Clubgegevens en systeeminstellingen</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <Link
+          href="/dashboard/instellingen/gebruikers"
+          className="bg-white rounded-xl border border-gray-100 p-5 hover:border-green-200 hover:shadow-sm transition-all flex items-center gap-4"
+        >
+          <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Users size={18} className="text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900">Gebruikers</p>
+            <p className="text-xs text-gray-500 mt-0.5">Rollen en teamtoewijzingen</p>
+          </div>
+          <ChevronRight size={16} className="text-gray-300" />
+        </Link>
+        <Link
+          href="/dashboard/instellingen/coaches"
+          className="bg-white rounded-xl border border-gray-100 p-5 hover:border-green-200 hover:shadow-sm transition-all flex items-center gap-4"
+        >
+          <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0">
+            <ShieldCheck size={18} className="text-green-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900">Coaches</p>
+            <p className="text-xs text-gray-500 mt-0.5">VOG-status en kwalificaties</p>
+          </div>
+          <ChevronRight size={16} className="text-gray-300" />
+        </Link>
       </div>
 
       <div className="space-y-6">
