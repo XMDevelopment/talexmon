@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDate, statusColors } from '@/lib/utils'
 
@@ -23,7 +23,7 @@ type Injury = {
   parent_email: string | null
   consent_given: boolean
   consent_given_at: string | null
-  Player?: { first_name: string; last_name: string } | null
+  Player?: { id: string; first_name: string; last_name: string } | null
   Team?: { name: string } | null
   Season?: { name: string } | null
 }
@@ -45,21 +45,15 @@ export default function BlessureDetailPage({ params }: { params: Promise<{ id: s
   const supabase = createClient()
   const [injury, setInjury] = useState<Injury | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
-
-  const [statusVal, setStatusVal] = useState<'actief' | 'hersteld'>('actief')
-  const [expectedReturn, setExpectedReturn] = useState('')
-  const [actualReturn, setActualReturn] = useState('')
-  const [notes, setNotes] = useState('')
 
   useEffect(() => {
     async function load() {
       const { id } = await params
       const { data, error: loadError } = await supabase
         .from('Injury')
-        .select('*, Player(first_name, last_name), Team(name), Season(name)')
+        .select('*, Player(id, first_name, last_name), Team(name), Season(name)')
         .eq('id', id)
         .single()
       if (loadError || !data) {
@@ -67,36 +61,11 @@ export default function BlessureDetailPage({ params }: { params: Promise<{ id: s
         setLoading(false)
         return
       }
-      const inj = data as Injury
-      setInjury(inj)
-      setStatusVal(inj.status)
-      setExpectedReturn(inj.expected_return ?? '')
-      setActualReturn(inj.actual_return ?? '')
-      setNotes(inj.notes ?? '')
+      setInjury(data as Injury)
       setLoading(false)
     }
     load()
   }, [])
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault()
-    if (!injury) return
-    setSaving(true)
-    setError('')
-    const { error: updateError } = await supabase.from('Injury').update({
-      status: statusVal,
-      expected_return: expectedReturn || null,
-      actual_return: actualReturn || null,
-      notes: notes || null,
-    }).eq('id', injury.id)
-    if (updateError) {
-      setError(updateError.message)
-      setSaving(false)
-      return
-    }
-    setInjury({ ...injury, status: statusVal, expected_return: expectedReturn || null, actual_return: actualReturn || null, notes: notes || null })
-    setSaving(false)
-  }
 
   async function handleDelete() {
     if (!injury) return
@@ -156,115 +125,79 @@ export default function BlessureDetailPage({ params }: { params: Promise<{ id: s
             {injuryLabels[injury.injury_type] ?? injury.injury_type} · sinds {formatDate(injury.start_date)}
           </p>
         </div>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="flex items-center gap-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 text-sm font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
-        >
-          <Trash2 size={14} />
-          {deleting ? 'Bezig...' : 'Verwijderen'}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/dashboard/blessures/${injury.id}/bewerken`}
+            className="flex items-center gap-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium px-3 py-2 rounded-lg transition-colors"
+          >
+            <Pencil size={14} />
+            Bewerken
+          </Link>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex items-center gap-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 text-sm font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={14} />
+            {deleting ? 'Bezig...' : 'Verwijderen'}
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6 space-y-4">
+      <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4 mb-6">
         <div className="grid grid-cols-3 gap-4">
+          <Field label="Team" value={injury.Team?.name} />
+          <Field label="Seizoen" value={injury.Season?.name} />
           <div>
-            <p className="text-xs text-gray-500 mb-1">Team</p>
-            <p className="text-sm text-gray-900">{injury.Team?.name || '—'}</p>
+            <p className="text-xs text-gray-500 mb-1">Status</p>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusColors[injury.status]}`}>
+              {injury.status === 'actief' ? 'Actief' : 'Hersteld'}
+            </span>
           </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Seizoen</p>
-            <p className="text-sm text-gray-900">{injury.Season?.name || '—'}</p>
-          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Field label="Type blessure" value={injuryLabels[injury.injury_type] ?? injury.injury_type} />
           <div>
             <p className="text-xs text-gray-500 mb-1">Ernst</p>
             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${severityColors[injury.severity]}`}>
               {injury.severity.charAt(0).toUpperCase() + injury.severity.slice(1)}
             </span>
           </div>
+          <Field label="Startdatum" value={formatDate(injury.start_date)} />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">E-mail speler</p>
-            <p className="text-sm text-gray-900">{injury.player_email || '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">E-mail ouder</p>
-            <p className="text-sm text-gray-900">{injury.parent_email || '—'}</p>
-          </div>
+          <Field label="Verwacht terug" value={injury.expected_return ? formatDate(injury.expected_return) : null} />
+          <Field label="Hersteld op" value={injury.actual_return ? formatDate(injury.actual_return) : null} />
+        </div>
+        <Field label="Notities" value={injury.notes} multiline />
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
+        <h2 className="text-sm font-semibold text-gray-900">Contact & AVG</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="E-mail speler" value={injury.player_email} />
+          <Field label="E-mail ouder" value={injury.parent_email} />
         </div>
         <div>
           <p className="text-xs text-gray-500 mb-1">Toestemming AVG</p>
           <p className="text-sm text-gray-900">
             {injury.consent_given
-              ? `Gegeven ${injury.consent_given_at ? `op ${formatDate(injury.consent_given_at)}` : ''}`
+              ? `Gegeven${injury.consent_given_at ? ` op ${formatDate(injury.consent_given_at)}` : ''}`
               : 'Niet gegeven'}
           </p>
         </div>
       </div>
+    </div>
+  )
+}
 
-      <form onSubmit={handleSave} className="bg-white rounded-xl border border-gray-100 p-6 space-y-5">
-        <h2 className="text-sm font-semibold text-gray-900">Voortgang bijwerken</h2>
-
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select
-              value={statusVal}
-              onChange={e => setStatusVal(e.target.value as typeof statusVal)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            >
-              <option value="actief">Actief</option>
-              <option value="hersteld">Hersteld</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Verwacht terug</label>
-            <input
-              type="date"
-              value={expectedReturn}
-              onChange={e => setExpectedReturn(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Hersteld op</label>
-            <input
-              type="date"
-              value={actualReturn}
-              onChange={e => setActualReturn(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notities</label>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            rows={4}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-        </div>
-
-        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusColors[injury.status]}`}>
-            Huidige status: {injury.status === 'actief' ? 'Actief' : 'Hersteld'}
-          </span>
-          <button
-            type="submit"
-            disabled={saving}
-            className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Bezig...' : 'Opslaan'}
-          </button>
-        </div>
-
-        {error && (
-          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-        )}
-      </form>
+function Field({ label, value, multiline }: { label: string; value: string | null | undefined; multiline?: boolean }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className={`text-sm text-gray-900 ${multiline ? 'whitespace-pre-wrap' : ''}`}>
+        {value || <span className="text-gray-300">—</span>}
+      </p>
     </div>
   )
 }

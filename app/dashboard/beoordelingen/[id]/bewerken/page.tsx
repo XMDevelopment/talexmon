@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
-type Player = { id: string; first_name: string; last_name: string; team_id: string | null; season_id: string | null }
+type Player = { id: string; first_name: string; last_name: string }
 type Team = { id: string; name: string }
 type Season = { id: string; name: string }
 
@@ -25,14 +25,17 @@ const scoreFields: { key: string; label: string; group: string }[] = [
   { key: 'ment_teamwork', label: 'Samenwerking', group: 'Mentaal' },
 ]
 
-export default function NieuweBeoordelingPage() {
+export default function BeoordelingBewerkenPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const supabase = createClient()
 
+  const [assessmentId, setAssessmentId] = useState('')
   const [players, setPlayers] = useState<Player[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [seasons, setSeasons] = useState<Season[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
 
   const [playerId, setPlayerId] = useState('')
@@ -40,7 +43,7 @@ export default function NieuweBeoordelingPage() {
   const [seasonId, setSeasonId] = useState('')
   const [assessorEmail, setAssessorEmail] = useState('')
   const [assessorName, setAssessorName] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState('')
   const [scores, setScores] = useState<Record<string, string>>({})
   const [coachNotes, setCoachNotes] = useState('')
   const [developmentAdvice, setDevelopmentAdvice] = useState('')
@@ -48,28 +51,41 @@ export default function NieuweBeoordelingPage() {
 
   useEffect(() => {
     async function load() {
-      const [{ data: p }, { data: t }, { data: s }, { data: { user } }] = await Promise.all([
-        supabase.from('Player').select('id, first_name, last_name, team_id, season_id').order('last_name'),
+      const { id } = await params
+      setAssessmentId(id)
+      const [{ data: p }, { data: t }, { data: s }, { data: a, error: loadError }] = await Promise.all([
+        supabase.from('Player').select('id, first_name, last_name').order('last_name'),
         supabase.from('Team').select('id, name').order('name'),
         supabase.from('Season').select('id, name').order('start_date', { ascending: false }),
-        supabase.auth.getUser(),
+        supabase.from('Assessment').select('*').eq('id', id).single(),
       ])
       setPlayers((p as Player[]) ?? [])
       setTeams((t as Team[]) ?? [])
       setSeasons((s as Season[]) ?? [])
-      const activeSeason = (s as Season[])?.[0]
-      if (activeSeason) setSeasonId(activeSeason.id)
-      if (user?.email) setAssessorEmail(user.email)
+      if (loadError || !a) {
+        setError(loadError?.message ?? 'Beoordeling niet gevonden')
+        setLoaded(true)
+        return
+      }
+      setPlayerId(a.player_id ?? '')
+      setTeamId(a.team_id ?? '')
+      setSeasonId(a.season_id ?? '')
+      setAssessorEmail(a.assessor_email ?? '')
+      setAssessorName(a.assessor_name ?? '')
+      setDate(a.date ?? '')
+      const initial: Record<string, string> = {}
+      for (const f of scoreFields) {
+        const v = a[f.key]
+        initial[f.key] = v == null ? '' : String(v)
+      }
+      setScores(initial)
+      setCoachNotes(a.coach_notes ?? '')
+      setDevelopmentAdvice(a.development_advice ?? '')
+      setSharedWithPlayer(a.shared_with_player ?? false)
+      setLoaded(true)
     }
     load()
   }, [])
-
-  useEffect(() => {
-    const p = players.find(x => x.id === playerId)
-    if (!p) return
-    if (p.team_id) setTeamId(p.team_id)
-    if (p.season_id) setSeasonId(p.season_id)
-  }, [playerId, players])
 
   function setScore(key: string, value: string) {
     setScores(prev => ({ ...prev, [key]: value }))
@@ -77,7 +93,7 @@ export default function NieuweBeoordelingPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
+    setSaving(true)
     setError('')
 
     const numericScores: Record<string, number | null> = {}
@@ -86,7 +102,7 @@ export default function NieuweBeoordelingPage() {
       numericScores[key] = raw === undefined || raw === '' ? null : Number(raw)
     }
 
-    const { error: insertError } = await supabase.from('Assessment').insert({
+    const { error: updateError } = await supabase.from('Assessment').update({
       player_id: playerId,
       team_id: teamId,
       season_id: seasonId,
@@ -97,16 +113,37 @@ export default function NieuweBeoordelingPage() {
       coach_notes: coachNotes || null,
       development_advice: developmentAdvice || null,
       shared_with_player: sharedWithPlayer,
-    })
+    }).eq('id', assessmentId)
 
-    if (insertError) {
-      setError(insertError.message)
-      setLoading(false)
+    if (updateError) {
+      setError(updateError.message)
+      setSaving(false)
       return
     }
 
     router.push('/dashboard/beoordelingen')
     router.refresh()
+  }
+
+  async function handleDelete() {
+    if (!confirm('Weet je zeker dat je deze beoordeling wilt verwijderen?')) return
+    setDeleting(true)
+    const { error: deleteError } = await supabase.from('Assessment').delete().eq('id', assessmentId)
+    if (deleteError) {
+      setError(deleteError.message)
+      setDeleting(false)
+      return
+    }
+    router.push('/dashboard/beoordelingen')
+    router.refresh()
+  }
+
+  if (!loaded) {
+    return (
+      <div className="p-8 max-w-3xl mx-auto">
+        <p className="text-sm text-gray-400">Beoordeling laden...</p>
+      </div>
+    )
   }
 
   const grouped = scoreFields.reduce<Record<string, typeof scoreFields>>((acc, f) => {
@@ -118,15 +155,28 @@ export default function NieuweBeoordelingPage() {
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <Link
-        href="/dashboard/beoordelingen"
+        href={`/dashboard/beoordelingen/${assessmentId}`}
         className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6"
       >
         <ArrowLeft size={14} />
-        Terug naar beoordelingen
+        Terug naar beoordeling
       </Link>
 
-      <h1 className="text-2xl font-semibold text-gray-900 mb-1">Nieuwe beoordeling</h1>
-      <p className="text-sm text-gray-500 mb-6">Beoordeel een speler op techniek, tactiek, fysiek en mentaal.</p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Beoordeling bewerken</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Pas scores, notities en ontwikkeladvies aan.</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting}
+          className="flex items-center gap-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 text-sm font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <Trash2 size={14} />
+          {deleting ? 'Bezig...' : 'Verwijderen'}
+        </button>
+      </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-100 p-6 space-y-5">
         <div>
@@ -266,17 +316,17 @@ export default function NieuweBeoordelingPage() {
 
         <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-50">
           <Link
-            href="/dashboard/beoordelingen"
+            href={`/dashboard/beoordelingen/${assessmentId}`}
             className="text-sm text-gray-600 hover:text-gray-900 px-4 py-2"
           >
             Annuleren
           </Link>
           <button
             type="submit"
-            disabled={loading}
+            disabled={saving}
             className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50"
           >
-            {loading ? 'Bezig...' : 'Beoordeling opslaan'}
+            {saving ? 'Bezig...' : 'Wijzigingen opslaan'}
           </button>
         </div>
       </form>
