@@ -69,7 +69,7 @@ export default function AanwezigheidPage({ params }: { params: Promise<{ id: str
         supabase
           .from('Player')
           .select('id, first_name, last_name, position')
-          .eq('team_id', (t as Training).team_id)
+          .eq('team_id', (t as unknown as Training).team_id)
           .order('last_name'),
         supabase
           .from('TrainingAttendance')
@@ -89,8 +89,8 @@ export default function AanwezigheidPage({ params }: { params: Promise<{ id: str
           existing[pl.id] = {
             training_id: id,
             player_id: pl.id,
-            team_id: (t as Training).team_id,
-            season_id: (t as Training).season_id,
+            team_id: (t as unknown as Training).team_id,
+            season_id: (t as unknown as Training).season_id,
             present: true,
             reason_absent: null,
           }
